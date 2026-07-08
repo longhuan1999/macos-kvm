@@ -1,0 +1,6 @@
+[submodule "quemus-qemu"]
+	path = quemus-qemu
+	url = https://github.com/qemus/qemu
+[submodule "dockur-macos"]
+	path = dockur-macos
+	url = https://github.com/dockur/macos

@@ -7,6 +7,7 @@ cd "$(dirname "$0")" || exit 1
 echo "Current directory: $(pwd)"
 
 # 加载 .env 文件
+QEMU_DIR="/run/shm"
 set -a
 if [ -f .env ]; then
   source .env
@@ -23,11 +24,15 @@ echo "ENV: $(env)"
 # ================= 1. 安装系统依赖 =================
 echo "Installing or updating required system packages..."
 apt update
-apt -y install make unzip wget p7zip-full mtools nginx websocketd \
-    python3 python3-websockify curl iproute2 iptables dnsmasq passt \
-    netcat-openbsd util-linux git vim net-tools screen novnc \
+apt install -y --fix-broken --fix-missing
+apt install -y --fix-missing \
+    make unzip wget p7zip-full mtools nginx websocketd ethtool usbutils socat usbmuxd\
+    python3 python3-websockify curl iproute2 iptables dnsmasq passt bc jq xxd fdisk nginx \
+    netcat-openbsd util-linux git vim net-tools screen novnc ipcalc swtpm procps avahi-daemon \
+    xz-utils apt-utils e2fsprogs iputils-ping inotify-tools ca-certificates python3-pip \
     ovmf uml-utilities libguestfs-tools dmg2img genisoimage \
-    qemu-system-x86 qemu-utils
+    fonts-noto-cjk fonts-wqy-zenhei fonts-noto-color-emoji gedit \
+    qemu-system-x86 qemu-utils qemu-system-gui
 
 
 # ================= 2. 定义变量 =================
@@ -42,8 +47,28 @@ REPO_VM_HIDE="https://github.com/Carnations-Botanica/VMHide"
 REPO_KVM_OPENCORE="https://github.com/LongQT-sea/OpenCore-ISO"
 REPO_OSX_KVM="https://raw.githubusercontent.com/kholia/OSX-KVM"
 
+VERSION_QMP="0.0.6"
+VERSION_UTK="1.2.0"
+VERSION_USBFLUXD="1.0"
+
+ARCH="$(uname -m)"
+TARGETARCH="${ARCH}"
+[[ "${ARCH}" == "x86_64" ]] && TARGETARCH="amd64"
+[[ "${ARCH}" == "aarch64" ]] && TARGETARCH="arm64"
+DEBCONF_NOWARNINGS="yes"
+DEBIAN_FRONTEND="noninteractive"
+DEBCONF_NONINTERACTIVE_SEEN="true"
+
 # ================= 3. 创建所需目录和脚本环境 =================
 mkdir -p /usr/local/bin /usr/share/OVMF /run /assets /storage
+
+# Install QMP
+pip3 install --no-cache-dir --break-system-packages --root-user-action=ignore "qemu.qmp==${VERSION_QMP}"
+
+# Configure QEMU
+mkdir -p /etc/qemu
+echo "allow br0" > /etc/qemu/bridge.conf
+
 if [ ! -d "quemus-qemu/src" ] || [ ! -d "dockur-macos/src" ]; then
     git submodule update --init
 fi
@@ -57,6 +82,45 @@ cp -f dockur-macos/src/entry.sh /run/entry.sh && chmod 755 /run/entry.sh
 cp -f dockur-macos/src/install.sh /run/install.sh && chmod 755 /run/install.sh
 cp -f dockur-macos/src/boot.sh /run/boot.sh && chmod 755 /run/boot.sh
 cp -f dockur-macos/src/cpu.sh /run/cpu.sh && chmod 755 /run/cpu.sh
+if [[ "${NGINX:-}" != [Yy]* ]]; then
+    sed -i "s/nginx -e/# nginx -e/" /run/server.sh
+    echo "!!! Please Manage nginx by yourself. The config file will be generated in /etc/nginx/sites-enabled/web.conf !!!"
+fi
+
+: "${VGA:="vmware"}"
+: "${VGA_DEVICE:="vmware-svga"}"
+[[ "${VGA,,}" == "virtio" ]] && VGA_DEVICE="virtio-vga"
+[[ "${VGA,,}" == "vmware" ]] && VGA_DEVICE="vmware-svga"
+[[ "${VGA,,}" == "cirrus" ]] && VGA_DEVICE="cirrus-vga"
+[[ "${VGA,,}" == "std" ]] && VGA_DEVICE="VGA"
+sed -i "s/DISPLAY_OPTS+=\" -device \$VGA\"/DISPLAY_OPTS+=\" -device \$VGA_DEVICE\"/" /run/display.sh
+
+if [ ! -f "/run/utk.bin" ]; then
+    echo "Downloading utk.bin to /tmp/utk.bin..."
+    wget --no-check-certificate -cO /tmp/utk.bin "https://github.com/qemus/fiano/releases/download/v${VERSION_UTK}/utk_${VERSION_UTK}_${TARGETARCH}.bin"
+    mv /tmp/utk.bin /run/utk.bin && chmod 755 /run/utk.bin
+else
+    chmod 755 /run/utk.bin
+fi
+
+sed -i "s/interface-mtu/mtu/" /run/network.sh
+
+if [ ! -f "/usr/local/sbin/usbfluxd" ]; then
+    wget --no-check-certificate -cO /tmp/usbfluxd.tar.gz "https://github.com/corellium/usbfluxd/releases/download/v${VERSION_USBFLUXD}/usbfluxd-${ARCH}-libc6-libdbus13.tar.gz"
+    tar -xzvf /tmp/usbfluxd.tar.gz -C /tmp
+    cp -f /tmp/usbfluxd-${ARCH}-libc6-libdbus13/usbfluxd /usr/local/sbin/
+    chmod 755 /usr/local/sbin/usbfluxd
+    rm -rf /tmp/usbfluxd-${ARCH}-libc6-libdbus13
+    rm -f /tmp/usbfluxd.tar.gz
+else
+    chmod 755 /usr/local/sbin/usbfluxd
+fi
+{ killall usbfluxd; }  || :
+{ killall socat; }  || :
+systemctl restart usbmuxd
+{ avahi-daemon; }  || :
+usbfluxd -f -n &> /var/log/usbfluxd.log &
+socat tcp-listen:5000,fork unix-connect:/var/run/usbmuxd &> /var/log/socat.log &
 
 # ================= 4. 检测并提取 macserial =================
 MACSERIAL_BIN="/usr/local/bin/macserial"
@@ -104,11 +168,9 @@ if [ "$NEED_DOWNLOAD_OVMF" = true ]; then
         fi
     done
     chmod 644 /usr/share/OVMF/*.fd
-    chmod 755 /run/*
     echo "OVMF firmware download completed."
 else
     chmod 644 /usr/share/OVMF/*.fd
-    chmod 755 /run/*
     echo "All OVMF firmware files already exist, skipping..."
 fi
 
@@ -137,7 +199,8 @@ fi
 # ================= 8. 写入版本信息 =================
 echo "$VERSION_ARG" > /etc/version
 
-# 从apple下载文件不再需要代理，开启代理反而可能会导致下载失败
-export -n HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy GATEWAY_PROXY
+if [[ "${DISABLE_PROXY:-}" == [Yy]* ]]; then
+    export -n HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy GATEWAY_PROXY
+fi
 
 . /run/entry.sh

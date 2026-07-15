@@ -26,14 +26,13 @@ echo "Installing or updating required system packages..."
 apt update
 apt install -y --fix-broken --fix-missing
 apt install -y --fix-missing \
-    make unzip wget p7zip-full mtools nginx websocketd ethtool usbutils socat usbmuxd\
+    make unzip wget p7zip-full mtools nginx websocketd ethtool usbutils socat build-essential bubblewrap \
     python3 python3-websockify curl iproute2 iptables dnsmasq passt bc jq xxd fdisk nginx \
     netcat-openbsd util-linux git vim net-tools screen novnc ipcalc swtpm procps avahi-daemon \
     xz-utils apt-utils e2fsprogs iputils-ping inotify-tools ca-certificates python3-pip \
     ovmf uml-utilities libguestfs-tools dmg2img genisoimage \
     fonts-noto-cjk fonts-wqy-zenhei fonts-noto-color-emoji gedit \
     qemu-system-x86 qemu-utils qemu-system-gui
-
 
 # ================= 2. 定义变量 =================
 VERSION_ARG="0.0"
@@ -104,23 +103,6 @@ else
 fi
 
 sed -i "s/interface-mtu/mtu/" /run/network.sh
-
-if [ ! -f "/usr/local/sbin/usbfluxd" ]; then
-    wget --no-check-certificate -cO /tmp/usbfluxd.tar.gz "https://github.com/corellium/usbfluxd/releases/download/v${VERSION_USBFLUXD}/usbfluxd-${ARCH}-libc6-libdbus13.tar.gz"
-    tar -xzvf /tmp/usbfluxd.tar.gz -C /tmp
-    cp -f /tmp/usbfluxd-${ARCH}-libc6-libdbus13/usbfluxd /usr/local/sbin/
-    chmod 755 /usr/local/sbin/usbfluxd
-    rm -rf /tmp/usbfluxd-${ARCH}-libc6-libdbus13
-    rm -f /tmp/usbfluxd.tar.gz
-else
-    chmod 755 /usr/local/sbin/usbfluxd
-fi
-{ killall usbfluxd; }  || :
-{ killall socat; }  || :
-systemctl restart usbmuxd
-{ avahi-daemon; }  || :
-usbfluxd -f -n &> /var/log/usbfluxd.log &
-socat tcp-listen:5000,fork unix-connect:/var/run/usbmuxd &> /var/log/socat.log &
 
 # ================= 4. 检测并提取 macserial =================
 MACSERIAL_BIN="/usr/local/bin/macserial"

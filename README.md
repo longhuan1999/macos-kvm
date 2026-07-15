@@ -1,13 +1,13 @@
 # macos-kvm
-本项目旨在为使用[`kholia/OSX-KVM`](https://github.com/kholia/OSX-KVM)项目在QEMU/KVM环境下运行macOS虚拟机的需求，提供初始安装环境(**基于apt包管理的Linux发行版**)，并利用[`dockur/macos`](https://github.com/dockur/macos)和[`qemus/qemu`](https://github.com/qemus/qemu)项目提供的脚本安装与配置QEMU/KVM环境和macOS虚拟机。
+本项目旨在为使用[`kholia/OSX-KVM`](https://github.com/kholia/OSX-KVM)项目在`QEMU/KVM`环境下运行`macOS`虚拟机的需求，提供初始安装环境(**基于apt包管理的Linux发行版**)，并利用[`dockur/macos`](https://github.com/dockur/macos)和[`qemus/qemu`](https://github.com/qemus/qemu)项目提供的脚本安装与配置`QEMU/KVM`环境和`macOS`虚拟机。
 
-QEMU/KVM环境和macOS虚拟机的实际安装配置脚本在[`dockur/macos`](https://github.com/dockur/macos)和[`qemus/qemu`](https://github.com/qemus/qemu)Docker镜像项目中。如果你只需要在Linux下的Docker中运行macOS，或在Windows WSL2环境下的Docker中运行macOS，那么建议你直接使用[`dockur/macos`](https://github.com/dockur/macos)，非常便捷。
+`QEMU/KVM`环境和`macOS`虚拟机的实际安装配置脚本在[`dockur/macos`](https://github.com/dockur/macos)和[`qemus/qemu`](https://github.com/qemus/qemu)`Docker`镜像项目中。如果你只需要在`Linux`下的`Docker`中运行`macOS`，或在`Windows WSL2`环境下的`Docker`中运行`macOS`，那么建议你直接使用[`dockur/macos`](https://github.com/dockur/macos)，非常便捷。
 
-如果你需要在Windows WSL或Hyper-V环境下安装QEMU/KVM环境并运行macOS，并且想在非Docker环境下控制QEMU/KVM、Nginx等环境的安装与配置细节，那么本项目的脚本非常适合这类需求。
+如果你需要在`Windows WSL`或`Hyper-V`环境下安装`QEMU/KVM`环境并运行`macOS`，并且想在非`Docker`环境下控制`QEMU/KVM`、`Nginx`等环境的安装与配置细节，那么本项目的脚本非常适合这类需求。
 
 #### 拉取本项目脚本
 ```shell
-git clone --depth 1 --branch main --single-branch https://github.com/longhuan1999/macos-kvm.git
+git clone --depth 1 --branch main --single-branch https://github.com/longhuan1999/macos-kvm.git && cd macos-kvm
 ```
 
 #### 设置环境变量
@@ -45,16 +45,42 @@ route -p add 172.31.14.0 mask 255.255.255.0 172.30.14.254
 ```
 
 #### Windows下[USB直通](https://learn.microsoft.com/zh-cn/windows/wsl/connect-usb)到WSL或Hyper-V
+
+Windows：在`Windows`命令行中执行以下命令
 ```PowerShell
 # 服务端
 usbipd bind --busid 2-4 --force
 # 重启usbipd服务
-# WSL2 (https://learn.microsoft.com/zh-cn/windows/wsl/connect-usb)
+```
+
+WSL2：[参考此处](https://learn.microsoft.com/zh-cn/windows/wsl/connect-usb)，在`Windows`命令行中执行以下命令
+```PowerShell
 usbipd attach --wsl --busid 2-4
+```
 
-# Hyper-V等其他
+Hyper-V：在`Hyper-V`虚拟机命令行中执行以下命令
+```shell
 usbip attach --remote=<主机 IP> --busid=2-4
+```
 
+### 转接iPhone到macOS虚拟机中
+
+#### 方法一：使用[usbfluxd](https://github.com/sickcodes/docker-osx#usbfluxd-iphone-usb---network-style-passthrough-osx-kvm-docker-osx)
+
+在`WSL2`和`Hyper-V`等虚拟机中执行以下命令
+```shell
+# WSL2和Hyper-V等其他[安装和运行usbfluxd](https://github.com/corellium/usbfluxd)
+# 请不要跳过安装brew和brew安装编译环境，直接编译usbfluxd
+# 会报错：configure: error: The file /libplist-2.0.a passed to --with-static-libplist does not exist
+chmod +x usbfluxd-install.sh && env ./usbfluxd-install.sh
+```
+
+在`macOS`虚拟机中执行以下命令
+```shell
 # macOS 客户端[安装和运行usbfluxd](https://github.com/sickcodes/docker-osx#connect-to-a-host-running-usbfluxd)
 sudo usbfluxd -f -r <USB主机 IP>:5000
 ```
+
+#### 方法二：使用[usb-over-ethernet](https://www.eltima.com/products/usb-over-ethernet/)
+
+详情请参考[usb-over-ethernet](https://www.eltima.com/products/usb-over-ethernet/)网站的说明
